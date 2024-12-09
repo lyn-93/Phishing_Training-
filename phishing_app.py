@@ -1,8 +1,64 @@
-from flask import Flask, request, send_from_directory
+import os
+import json
+from datetime import datetime
+from flask import Flask, request, send_from_directory, jsonify
+import uuid
+import logging
+from logging.handlers import RotatingFileHandler
 
 app = Flask(__name__)
 
-# Serve the phishing page (fake IT support login form)
+# Ensure necessary directories exist
+os.makedirs('logs', exist_ok=True)
+os.makedirs('static', exist_ok=True)
+
+# Logging Configuration
+def setup_logging():
+    log_file = 'logs/phishing_simulation.log'
+    file_handler = RotatingFileHandler(
+        log_file, 
+        maxBytes=10*1024*1024,  # 10 MB
+        backupCount=5
+    )
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(levelname)s - %(message)s'
+    ))
+    app.logger.addHandler(file_handler)
+    app.logger.setLevel(logging.INFO)
+
+# Credential Tracking Class
+class PhishingTracker:
+    def __init__(self):
+        self.tracking_file = 'logs/user_vulnerabilities.json'
+    
+    def log_attempt(self, username, ip_address, user_agent):
+        attempt_id = str(uuid.uuid4())
+        attempt_data = {
+            'id': attempt_id,
+            'username': username,
+            'timestamp': datetime.now().isoformat(),
+            'ip_address': ip_address,
+            'user_agent': user_agent,
+            'vulnerability_score': self._calculate_vulnerability_score()
+        }
+        
+        try:
+            with open(self.tracking_file, 'a+') as f:
+                json.dump(attempt_data, f)
+                f.write('\n')
+        except Exception as e:
+            app.logger.error(f"Failed to log attempt: {e}")
+        
+        return attempt_id
+    
+    def _calculate_vulnerability_score(self):
+        # Mock vulnerability scoring system
+        # Could be expanded with machine learning in future
+        return 0.75  # Example base score
+
+phishing_tracker = PhishingTracker()
+
+# Home Route
 @app.route('/')
 def home():
     return '''
@@ -12,8 +68,7 @@ def home():
             body {
                 margin: 0;
                 padding: 0;
-                background-image: url('/static/background.jpg'); /* Background image from local machine */
-                background-size: cover;
+                background-color: #f4f4f4;
                 font-family: Arial, sans-serif;
             }
             .container {
@@ -22,20 +77,17 @@ def home():
                 align-items: center;
                 height: 100vh;
                 flex-direction: column;
-                background-color: rgba(255, 255, 255, 0.8);  /* Transparent background for better readability */
-                padding: 20px;
-                border-radius: 10px;
-                box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
             }
             .login-box {
+                background-color: white;
+                padding: 30px;
+                border-radius: 10px;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
                 text-align: center;
                 width: 400px;
-                margin-bottom: 20px;
             }
             h2 {
                 color: #333;
-                font-size: 24px;
-                margin-bottom: 20px;
             }
             input[type="text"], input[type="password"] {
                 width: 100%;
@@ -53,35 +105,6 @@ def home():
                 cursor: pointer;
                 width: 100%;
             }
-            input[type="submit"]:hover {
-                background-color: #0056b3;
-            }
-            .links {
-                margin-top: 20px;
-            }
-            .links a {
-                text-decoration: none;
-                color: #007bff;
-                margin: 0 15px;
-            }
-            .links a:hover {
-                text-decoration: underline;
-            }
-            .tips {
-                margin-top: 30px;
-                font-size: 14px;
-                color: #555;
-            }
-            .tips ul {
-                list-style-type: none;
-                padding: 0;
-            }
-            .tips ul li {
-                margin: 10px 0;
-            }
-            .tips a {
-                color: #007bff;
-            }
         </style>
     </head>
     <body>
@@ -95,29 +118,40 @@ def home():
                     <input type="submit" value="Log In">
                 </form>
             </div>
-            <div class="links">
-                <a href="#">Forgot Password?</a>
-                <a href="#">Contact Support</a>
-                <a href="#">Security Tips</a>
-            </div>
-            <div class="tips">
-            </div>
         </div>
     </body>
     </html>
     '''
 
-# Route to capture and log credentials
+# Login Route
 @app.route('/login', methods=['POST'])
 def login():
     username = request.form['username']
     password = request.form['password']
 
-    # Log the captured username and password to a file
+    # Log credentials to original file
     with open('captured_credentials.txt', 'a') as f:
         f.write(f'Username: {username}, Password: {password}\n')
 
-    # Display phishing test failure message with tips
+    # Capture additional context for vulnerability tracking
+    ip_address = request.remote_addr
+    user_agent = request.user_agent.string
+    
+    # Log the attempt with comprehensive details
+    attempt_id = phishing_tracker.log_attempt(
+        username, 
+        ip_address, 
+        user_agent
+    )
+    
+    # Detailed logging
+    app.logger.warning(
+        f"Phishing Attempt Detected - ID: {attempt_id}, "
+        f"Username: {username}, "
+        f"IP: {ip_address}"
+    )
+
+    # Failure page with educational content
     return '''
     <html>
     <head>
@@ -125,73 +159,82 @@ def login():
             body {
                 margin: 0;
                 padding: 0;
-                background-image: url('/static/fail_background.jpg'); /* Background image for the failure page */
-                background-size: cover;
+                background-color: #f4f4f4;
                 font-family: Arial, sans-serif;
-            }
-            .container {
                 display: flex;
                 justify-content: center;
                 align-items: center;
                 height: 100vh;
-                flex-direction: column;
-                background-color: rgba(255, 255, 255, 0.8);  /* Transparent background for better readability */
-                padding: 20px;
-                border-radius: 10px;
-                box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+            }
+            .container {
                 text-align: center;
+                background-color: white;
+                padding: 30px;
+                border-radius: 10px;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                max-width: 500px;
+                width: 100%;
             }
             h2 {
                 color: red;
-                font-size: 24px;
-                margin-bottom: 20px;
-            }
-            img {
-                width: 150px;
-                height: auto;
-                margin-bottom: 20px;
             }
             .tips {
-                font-size: 16px;
-                color: #333;
+                margin-top: 20px;
+                text-align: left;
             }
             .tips ul {
-                list-style-type: none;
-                padding: 0;
-            }
-            .tips ul li {
-                margin: 10px 0;
-            }
-            .tips a {
-                color: #007bff;
+                list-style-type: disc;
+                padding-left: 20px;
             }
         </style>
     </head>
     <body>
         <div class="container">
-            <h2>You’ve been Phished!</h2>
-            <h2>This was a test phishing attempt performed by an internal cybersecurty team</h2>
-            <img src="/static/warning_image.jpg" alt="Warning">  <!-- You can replace this with any local image -->
-            <p>It's okay, mistakes happen! But next time, follow these tips to stay safe:</p>
+            <h2>You've been Phished!</h2>
+            <p>Attempt ID: ''' + attempt_id + '''</p>
+            <p>This was a test phishing attempt performed by an internal cybersecurity team</p>
             <div class="tips">
+                <h3>Security Learning Moment</h3>
                 <ul>
-                    <li>1. Double-check the URL before entering your credentials.</li>
-                    <li>2. Avoid clicking on suspicious links.</li>
-                    <li>3. Be cautious of emails asking for sensitive information.</li>
-                    <li>4. Stay informed on phishing prevention techniques.</li>
+                    <li>🚨 You've just encountered a simulated phishing attempt</li>
+                    <li>🔒 Always verify the source of login requests</li>
+                    <li>📱 Enable two-factor authentication</li>
+                    <li>🌐 Check for HTTPS and valid certificates</li>
                 </ul>
-                <p>For more information, visit <a href="https://www.occ.gov/topics/consumers-and-communities/consumer-protection/fraud-resources/phishing-attack-prevention.html" target="_blank">this guide on phishing prevention.</a></p>
             </div>
         </div>
     </body>
     </html>
     '''
 
-# Serve the logo image and background from the local static folder
+# Vulnerability Report Endpoint
+@app.route('/vulnerability-report')
+def vulnerability_report():
+    try:
+        with open('logs/user_vulnerabilities.json', 'r') as f:
+            vulnerabilities = [json.loads(line) for line in f]
+        
+        report = {
+            'total_attempts': len(vulnerabilities),
+            'average_vulnerability_score': sum(
+                v['vulnerability_score'] for v in vulnerabilities
+            ) / len(vulnerabilities) if vulnerabilities else 0,
+            'top_vulnerable_users': sorted(
+                vulnerabilities, 
+                key=lambda x: x['vulnerability_score'], 
+                reverse=True
+            )[:5]
+        }
+        
+        return jsonify(report)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Serve static files (if needed)
 @app.route('/static/<path:filename>')
 def static_files(filename):
     return send_from_directory('static', filename)
 
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=5000)  # Accessible locally and on your network
-
+    setup_logging()
+    app.run(host='127.0.0.1', port=5009)
